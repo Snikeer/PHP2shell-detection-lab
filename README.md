@@ -134,5 +134,33 @@ sudo nano /etc/apt/apt.conf.d/20auto-upgrades
 ```
 
 Within `20auto-upgrades`, both periodic settings were set to `"0"`:
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+
+Status after change: `inactive (dead)`, `disabled`.
 
 
+
+
+Status after change: `inactive (dead)`, `disabled`.
+
+#### 5. Repository Verification
+```bash
+date
+sudo apt update
+apt-cache policy php8.3-cli
+```
+
+`apt update` refreshes the local package index without installing anything. Before this step, apt's cache could be outdated, so `Candidate` might not show the fix. After the refresh, `apt-cache policy` shows:
+
+- **Installed:** 8.3.6-0ubuntu0.24.04.5
+- **Candidate:** 8.3.6-0ubuntu0.24.04.13 (from noble-updates and noble-security)
+
+<img src="images/9_apt_policy_comparison.png" alt="apt-cache policy comparison: lamp (installed .5, candidate .13) vs php-lab-node (installed .13, candidate .13)" width="700">
+
+The same command on `php-lab-node` (Phase 1) shows the fixed version as installed, which gives a direct comparison:
+
+- `lamp`: Installed `8.3.6-0ubuntu0.24.04.5`, Candidate `8.3.6-0ubuntu0.24.04.13`. Affected, update available.
+- `php-lab-node`: Installed `8.3.6-0ubuntu0.24.04.13`, Candidate `8.3.6-0ubuntu0.24.04.13`. Patched, no update pending.
+
+The `apt changelog` request for `.13` returned 404 from the changelog server, so the repository and tracker are used as primary evidence instead.
