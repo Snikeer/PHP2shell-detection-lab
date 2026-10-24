@@ -22,7 +22,8 @@ This repository does **not** contain working exploit code or a proof-of-concept 
 - **Automation:** Python (log analysis)
 
 ## 🚀 Project Roadmap
-- [X] Phase 1: Deploy a vulnerable lab environment (pre-patch PHP version)
+- [X] Phase 1: php-lab-node (patched reference)
+- [X] Phase 1b: lamp (legacy, unpatched)
 - [ ] Phase 2: Establish baseline logging & process monitoring
 - [ ] Phase 3: Build detection logic (Sigma rule + Python log analyzer)
 - [ ] Phase 4: Patch the environment and verify remediation
@@ -62,7 +63,6 @@ php -v
 
 <img src="images/3_php_version.png" alt="php -v output" width="600">
 
-Output: PHP 8.3.6 (cli) (built: Oct 19 2026 15:16:58) (NTS)
 
 
 
@@ -86,7 +86,9 @@ Both list `8.3.6-0ubuntu0.24.04.13` (noble) as the fixed version.
 
 #### 4. Assessment
 - **Patch status:** Not affected
-- **Reasoning:** The installed package `8.3.6-0ubuntu0.24.04.13` is the version in which Ubuntu applied the fix already.
+- **Reasoning:** Installed package `8.3.6-0ubuntu0.24.04.13` equals the fixed version listed on the Ubuntu tracker for both CVEs. The changelog shows no pending update, and `apt-cache policy` reports Installed and Candidate as the same version.
+- **Verification sources:** `php -v`, `apt changelog`, Ubuntu CVE tracker (CVE-2026-109618 / CVE-2026-109619), `apt-cache policy`.
+- **Limitation:** Version-based checks are supplemented by package evidence because Ubuntu backports fixes without changing the upstream version number.
 
 ---
 
@@ -108,7 +110,6 @@ php -v
 
 <img src="images/7_lamp_php_version.png" alt="php -v output on lamp" width="600">
 
-Output: PHP 8.3.6 (cli) (built: Jul 14 2025 18:30:55) (NTS)
 
 The version number alone does not determine patch status, so the changelog was checked as well.
 
@@ -141,9 +142,6 @@ Status after change: `inactive (dead)`, `disabled`.
 
 
 
-
-Status after change: `inactive (dead)`, `disabled`.
-
 #### 5. Repository Verification
 ```bash
 date
@@ -164,3 +162,17 @@ The same command on `php-lab-node` (Phase 1) shows the fixed version as installe
 - `php-lab-node`: Installed `8.3.6-0ubuntu0.24.04.13`, Candidate `8.3.6-0ubuntu0.24.04.13`. Patched, no update pending.
 
 The `apt changelog` request for `.13` returned 404 from the changelog server, so the repository and tracker are used as primary evidence instead.
+
+
+#### 6. Cross-reference with Ubuntu CVE Tracker
+Both tracker entries list `8.3.6-0ubuntu0.24.04.13` (noble) as the fixed version:
+- https://ubuntu.com/security/CVE-2026-109618
+- https://ubuntu.com/security/CVE-2026-109619
+
+The installed package `8.3.6-0ubuntu0.24.04.5` is not listed. The tracker shows only the fixed version per release, so this is expected. The installed version is older than the fixed version, and the repository check in step 5 confirms the update is available.
+
+
+#### 7. Assessment
+- **Patch status:** Affected
+- **Reasoning:** Installed `8.3.6-0ubuntu0.24.04.5` is older than the fixed version `8.3.6-0ubuntu0.24.04.13`. Confirmed by changelog, tracker, and repository candidate.
+- **Remediation:** Pending. Will be applied and verified in Phase 4 to document the before/after state.
