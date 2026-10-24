@@ -123,8 +123,16 @@ apt changelog php8.3-cli 2>/dev/null | grep CVE
 The output shows the installed package (`8.3.6-0ubuntu0.24.04.5`, noble-security) and the full CVE list from the changelog, filtered with `grep CVE`. CVE-2026-109618 and CVE-2026-109619 do not appear.
 
 
-#### 4. Cross-reference with Ubuntu CVE Tracker
+#### 4. Disable Automatic Updates
+To keep the vulnerable state stable during documentation, `unattended-upgrades` was stopped and disabled:
 
-did not found `8.3.6-0ubuntu0.24.04.5` on any of these, maybe to old?
+```bash
+sudo systemctl stop unattended-upgrades
+sudo systemctl disable unattended-upgrades
+sudo systemctl status unattended-upgrades --no-pager
+sudo nano /etc/apt/apt.conf.d/20auto-upgrades
+```
+
+Within `20auto-upgrades`, both periodic settings were set to `"0"`:
 
 
