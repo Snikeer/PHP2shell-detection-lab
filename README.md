@@ -23,7 +23,7 @@ This repository does **not** contain working exploit code or a proof-of-concept 
 
 ## 🚀 Project Roadmap
 - [X] Phase 1: php-lab-node (patched reference)
-- [X] Phase 1b: lamp (legacy, unpatched)
+  - [X] Phase 1b: lamp (legacy, unpatched)
 - [ ] Phase 2: Establish baseline logging & process monitoring
 - [ ] Phase 3: Build detection logic (Sigma rule + Python log analyzer)
 - [ ] Phase 4: Patch the environment and verify remediation
