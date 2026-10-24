@@ -8,8 +8,9 @@ This repository does **not** contain working exploit code or a proof-of-concept 
 - **Disclosed:** October 21, 2026
 - **CVSS v4.0 score:** 9.2 (Critical) for both CVEs
 - **Type:** Remote Code Execution (RCE) in Core PHP
-- **CVE-2026-109618:** Triggered by Out-Of-Memory (OOM) handling. PHP unwinds the current context via `longjmp()` on OOM, which in some code paths leaves request memory uninitialized; subsequent request cleanup can read or branch on this memory. Repeated OOM triggers can be chained toward RCE.
-- **CVE-2026-109619:** Triggered by fatal-error handling. The same `longjmp()` unwind pattern can leave global memory pointing at a freed memory region, which a later request may read or branch on, enabling several attack paths.
+- **CVE-2026-109618:** Happens when PHP runs out of memory (OOM) while handling a request. Instead of cleaning up safely, PHP unexpectedly jumps out of what it was doing (`longjmp()`) and leaves some memory behind in an unfinished, "uninitialized" state. When the *next* request comes in, PHP can accidentally read or act on that leftover memory instead of fresh data. By intentionally forcing out-of-memory conditions over and over, an attacker can turn this leftover memory into a way to run their own code on the server.
+- **CVE-2026-109619:** Works the same way, but is triggered by a fatal error instead of an out-of-memory condition. When PHP aborts a request after a fatal error, it can leave a piece of memory pointing to a spot that has already been freed up ("dangling pointer"). A later request may then read from, or make decisions based on that now-invalid memory, which can also be abused to run unauthorized code on the server.
+**In short:** both bugs come from the same root cause PHP not cleaning up memory properly when a request is cut short (by an OOM error or a fatal error) and both can be escalated from "memory corruption" to full remote code execution.
 - **Patched in:** PHP 8.5.12, 8.4.27, 8.3.36, 8.2.35 (minimal source backports also released for 7.4, 8.0, 8.1)
 - **Sources:** PHP Security Team advisory, additional analysis from watchTowr, SOC Prime, Fastly, Bitsight
 
