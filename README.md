@@ -23,7 +23,7 @@ This repository does **not** contain working exploit code or a proof-of-concept 
 
 ## 🚀 Project Roadmap
 - [X] Phase 1: php-lab-node (patched reference)
-  - [X] Phase 1b: lamp (legacy, unpatched)
+ - [X] Phase 1b: lamp (legacy, unpatched)
 - [ ] Phase 2: Establish baseline logging & process monitoring
 - [ ] Phase 3: Build detection logic (Sigma rule + Python log analyzer)
 - [ ] Phase 4: Patch the environment and verify remediation
@@ -176,3 +176,130 @@ The installed package `8.3.6-0ubuntu0.24.04.5` is not listed. The tracker shows 
 - **Patch status:** Affected
 - **Reasoning:** Installed `8.3.6-0ubuntu0.24.04.5` is older than the fixed version `8.3.6-0ubuntu0.24.04.13`. Confirmed by changelog, tracker, and repository candidate.
 - **Remediation:** Pending. Will be applied and verified in Phase 4 to document the before/after state.
+
+
+
+
+
+### Phase 2: Baseline Logging with auditd
+
+#### Goal
+Confirm that the Linux audit framework (`auditd`) records PHP execution and PHP configuration changes on both nodes. These events are the input for the detection work in Phase 3.
+
+#### Lab architecture
+- **Target nodes:** `php-lab-node` (patched) and `lamp` (unpatched). Audit rules run here and generate the events.
+- **Analysis host:** Kali Linux desktop. Connects over SSH and analyses the collected logs in Phase 3.
+- **Log transfer:** Logs are copied to the analysis host with `scp`. No detection logic runs on the target nodes.
+
+#### 1. Verify PHP Integration
+
+**`php-lab-node`: PHP-FPM**
+```bash
+readlink -f /usr/bin/php
+ls /usr/sbin | grep php-fpm
+systemctl list-units --type=service | grep php
+```
+
+<img src="images/10_php_integration_php_lab_node.png" alt="PHP-FPM service and binary on php-lab-node" width="600">
+
+Result: `/usr/bin/php` resolves to `/usr/bin/php8.3`, `php-fpm8.3` is present, and `php8.3-fpm.service` is active.
+
+**`lamp`: mod_php (Apache)**
+```bash
+readlink -f /usr/bin/php
+ls /usr/sbin | grep php-fpm
+apache2ctl -M | grep -i php
+systemctl is-active apache2
+ls /etc/apache2/mods-enabled | grep -i php
+```
+
+<img src="images/11_php_integration_lamp.png" alt="mod_php loaded in Apache on lamp" width="600">
+
+Result: `/usr/bin/php` resolves to `/usr/bin/php8.3`. No `php-fpm` binary is present. Apache reports `php_module (shared)`, and `php8.3.load` and `php8.3.conf` are enabled. PHP runs inside Apache, so the php-fpm audit rule does not apply to this node.
+
+`apache2ctl` printed an `AH00558` warning (ServerName not set). It does not affect the result.
+
+#### 2. Install and Enable auditd
+`auditd` is the Linux kernel audit framework. It records security-relevant events such as program execution and file changes.
+
+```bash
+sudo apt install -y auditd audispd-plugins
+sudo systemctl enable --now auditd
+sudo systemctl status auditd --no-pager
+```
+
+<img src="images/12_auditd_status_php_lab_node.png" alt="auditd status on php-lab-node" width="600">
+
+<img src="images/13_auditd_status_lamp.png" alt="auditd status on lamp" width="600">
+
+#### 3. Audit Rules
+Rules were written to `/etc/audit/rules.d/php-baseline.rules`. They watch the PHP binary for execution, and the PHP configuration files for writes and attribute changes. Directory watches in auditd are not recursive, so configuration files are referenced individually where possible.
+
+
+```bash
+sudo nano /etc/audit/rules.d/php-baseline.rules
+```
+
+
+`php-lab-node`:
+```
+-w /usr/bin/php8.3 -p x -k php_exec
+-w /usr/sbin/php-fpm8.3 -p x -k php_fpm_exec
+-w /etc/php/8.3/cli/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/fpm/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/fpm/pool.d/ -p wa -k php_fpm_pool_change
+```
+
+`lamp`:
+```
+-w /usr/bin/php8.3 -p x -k php_exec
+-w /etc/php/8.3/cli/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/apache2/php.ini -p wa -k php_config_change
+-w /etc/apache2/mods-enabled/ -p wa -k apache_mod_change
+```
+
+Loaded and verified with:
+```bash
+sudo augenrules --load
+sudo auditctl -l
+```
+
+- `-w` sets the path to watch.
+- `-p x` logs execution, `-p wa` logs writes and attribute changes.
+- `-k` attaches a key so events can be searched later.
+
+<img src="images/14_auditd_rules_php_lab_node.png" alt="auditd rules loaded on php-lab-node" width="600">
+
+<img src="images/15_auditd_rules_lamp.png" alt="auditd rules loaded on lamp" width="600">
+
+
+#### 4. Baseline Event
+A harmless PHP CLI command was run to generate a known event, and the audit log was searched by key.
+
+```bash
+date
+php -r 'echo "baseline check\n";'
+sudo ausearch -k php_exec -i --start recent | tail -n 20
+```
+
+<img src="images/16_auditd_baseline_php_lab_node.png" alt="auditd baseline event on php-lab-node" width="700">
+
+<img src="images/17_auditd_baseline_lamp.png" alt="auditd baseline event on lamp" width="700">
+
+
+Timestamp of the test: `Sun Oct 25 2026, 21:37 UTC` on `php-lab-node` and `Sun Oct 25 2026, 21:37 UTC` on `lamp`.
+
+Key fields in the output:
+- `key=php_exec`: the rule that matched.
+- `exe=/usr/bin/php8.3`: the binary that was executed.
+- `comm=php`, `auid=ubuntu`: the process name and the login user that triggered it.
+The output also contains a `key=(null)` entry from `auditctl -R`, which is the rule loading step and not a PHP event.
+
+
+
+**Limitation:** This test exercises the CLI binary only. On `lamp`, web requests run inside Apache through `mod_php`, so they are not covered by this test. No test traffic was sent to the unpatched node in this phase.
+
+#### 5. Result
+- **php-lab-node:** audit event recorded for `php_exec` key: **yes** (`exe=/usr/bin/php8.3`, `comm=php`).
+- **lamp:** audit event recorded for `php_exec` key: **yes** (`exe=/usr/bin/php8.3`, `comm=php`).
+- **Observation:** Both nodes record CLI execution of PHP under the `php_exec` key. Web requests served through Apache `mod_php` on `lamp` are not covered by this test and are a known gap for Phase 3.
