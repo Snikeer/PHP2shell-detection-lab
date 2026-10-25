@@ -264,9 +264,7 @@ sudo augenrules --load
 sudo auditctl -l
 ```
 
-- `-w` sets the path to watch.
-- `-p x` logs execution, `-p wa` logs writes and attribute changes.
-- `-k` attaches a key so events can be searched later.
+The `-w` flag sets the path to watch. `-p x` logs execution of that path, and `-p wa` logs writes and attribute changes. The `-k` flag attaches a key so the events can be found later with `ausearch`.
 
 <img src="images/14_auditd_rules_php_lab_node.png" alt="auditd rules loaded on php-lab-node" width="600">
 
@@ -289,11 +287,7 @@ sudo ausearch -k php_exec -i --start recent | tail -n 20
 
 Timestamp of the test: `Sun Oct 25 2026, 21:37 UTC` on `php-lab-node` and `Sun Oct 25 2026, 21:37 UTC` on `lamp`.
 
-Key fields in the output:
-- `key=php_exec`: the rule that matched.
-- `exe=/usr/bin/php8.3`: the binary that was executed.
-- `comm=php`, `auid=ubuntu`: the process name and the login user that triggered it.
-
+In the output, `key=php_exec` shows which rule matched, and `exe=/usr/bin/php8.3` shows the binary that ran. The `comm=php` field is the process name, and `auid=ubuntu` is the login user who started it, which matters later when we want to tell an admin's command apart from something unexpected.
 The output also contains a `key=(null)` entry from `auditctl -R`, which is the rule loading step and not a PHP event.
 
 
