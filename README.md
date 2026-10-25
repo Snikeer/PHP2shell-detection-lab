@@ -24,7 +24,7 @@ This repository does **not** contain working exploit code or a proof-of-concept 
 ## 🚀 Project Roadmap
 - [X] Phase 1: php-lab-node (patched reference)
  - [X] Phase 1b: lamp (legacy, unpatched)
-- [ ] Phase 2: Establish baseline logging & process monitoring
+- [X] Phase 2: Establish baseline logging & process monitoring
 - [ ] Phase 3: Build detection logic (Sigma rule + Python log analyzer)
 - [ ] Phase 4: Patch the environment and verify remediation
 - [ ] Phase 5: Write an incident-response-style report
@@ -293,6 +293,7 @@ Key fields in the output:
 - `key=php_exec`: the rule that matched.
 - `exe=/usr/bin/php8.3`: the binary that was executed.
 - `comm=php`, `auid=ubuntu`: the process name and the login user that triggered it.
+
 The output also contains a `key=(null)` entry from `auditctl -R`, which is the rule loading step and not a PHP event.
 
 
