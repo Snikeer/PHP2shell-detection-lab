@@ -284,17 +284,18 @@ sudo ausearch -k php_exec -i --start recent | tail -n 20
 
 <img src="images/17_auditd_baseline_lamp.png" alt="auditd baseline event on lamp" width="700">
 
+Timestamp of the test: `Sun Oct 25 2026, 21:37 UTC` on both nodes.
 
-Timestamp of the test: `Sun Oct 25 2026, 21:37 UTC` on `php-lab-node` and `Sun Oct 25 2026, 21:37 UTC` on `lamp`.
-
-In the output, `key=php_exec` shows which rule matched, and `exe=/usr/bin/php8.3` shows the binary that ran. The `comm=php` field is the process name, and `auid=ubuntu` is the login user who started it, which matters later when we want to tell an admin's command apart from something unexpected.
-The output also contains a `key=(null)` entry from `auditctl -R`, which is the rule loading step and not a PHP event.
-
-
-
-**Limitation:** This test exercises the CLI binary only. On `lamp`, web requests run inside Apache through `mod_php`, so they are not covered by this test. No test traffic was sent to the unpatched node in this phase.
+In the output, `key=php_exec` shows which rule matched, and `exe=/usr/bin/php8.3` shows the binary that ran. The `comm=php` field is the process name. The output also contains a `key=(null)` entry from `auditctl -R`, which is the rule loading step and not a PHP event.
 
 #### 5. Result
 - **php-lab-node:** audit event recorded for `php_exec` key: **yes** (`exe=/usr/bin/php8.3`, `comm=php`).
 - **lamp:** audit event recorded for `php_exec` key: **yes** (`exe=/usr/bin/php8.3`, `comm=php`).
-- **Observation:** Both nodes record CLI execution of PHP under the `php_exec` key. Web requests served through Apache `mod_php` on `lamp` are not covered by this test and are a known gap for Phase 3.
+- **Observation:** Both nodes record CLI execution of PHP under the `php_exec` key.
+
+#### 6. Assessment
+- **Monitoring status:** Partially effective.
+- **Reasoning:** `auditd` records CLI execution of PHP on both nodes, and the configuration watches are loaded. This is enough to build detection logic on in Phase 3.
+- **Gap:** Requests served through Apache `mod_php` on `lamp` do not trigger the `php_exec` rule, because the process running the code is Apache, not `/usr/bin/php8.3`. The unpatched node is therefore only partly covered.
+- **Next step:** Phase 3 builds detection on the CLI events. The web-request gap is documented here, and a separate test for it is planned in a later phase.
+Claude arbeider direkte med kodebasen din
