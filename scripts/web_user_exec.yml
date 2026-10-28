@@ -1,0 +1,22 @@
+title: Command started by the web server user
+id: <I made one by using uuidgen comand>
+status: experimental
+description: >
+  Any execve performed by uid 33 (www-data). A PHP or Apache process that
+  starts a shell or another program shows up here. This rule is meant to
+  cover the mod_php path that php_exec does not see on lamp. It has only
+  been tested through sudo -u www-data, not through real web requests.
+author: Snikeer
+date: 2026/10/28
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    key: web_user_exec
+  condition: selection
+falsepositives:
+  - Scheduled jobs or maintenance scripts running as www-data
+level: high
+tags:
+  - attack.execution
