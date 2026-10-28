@@ -379,6 +379,9 @@ The audit log is readable only by root, so each node copies it to `/tmp` first. 
 
 <img src="images/22_phase3_logs_on_kali.png" alt="Audit log copies on the analysis host" width="600">
 
+
+
+
 #### 4. Detection rules
 The detections are three Sigma rules in `detection/sigma/`. `php_cli_exec` matches the `php_exec` watch on the PHP binary and is informational, because it fires on any manual PHP run. `web_user_exec` matches any command started by `www-data` and is rated high, since a shell started by the web user is the pattern I most want to catch. `php_config_change` covers writes and attribute changes to PHP and Apache configuration and is rated medium.
 
@@ -397,15 +400,16 @@ python3 analysis/parse_audit.py logs/lamp/audit-phase3.log --node lamp --since "
 <img src="images/24_analyzer_lamp.png" alt="Analysis output for lamp" width="700">
 
 #### 6. Result
-- **php-lab-node:** `php_cli_exec` `[n]` matches, `web_user_exec` `[n]` matches, `php_config_change` `[n]` matches.
-- **lamp:** `php_cli_exec` `[n]` matches, `web_user_exec` `[n]` matches, `php_config_change` `[n]` matches.
-- **Observation:** `[one or two sentences on what the output shows, including whether the shell started by www-data appeared with auid=ubuntu]`
+- **php-lab-node:** `php_cli_exec` 2 matches, `web_user_exec` 2 matches, `php_config_change` 1 match.
+- **lamp:** `php_cli_exec` 2 matches, `web_user_exec` 2 matches, `php_config_change` 1 match.
+- **Observation:** On both nodes, the shell started by PHP as `www-data` (`sh -c -- id`) and the `id` process it ran were recorded under `web_user_exec` with `auid` still pointing at the login user (1000, which is `ubuntu` on the node). The PHP process itself was recorded only under `php_exec`, because the watch rule matched first.
 
 #### 7. Assessment
 - **Detection status:** Partially effective, with one new control aimed at the Phase 2 gap.
 - **Reasoning:** The CLI path is detected on both nodes, and configuration changes are detected. The `web_user_exec` rule is the first thing in this project that could catch a shell started from a web request, and the test shows that it fires for a shell started by `www-data`.
 - **Gap:** I have not verified that a real request through Apache on `lamp` produces a `web_user_exec` event. The rule should catch it, because Apache runs as `www-data`, but that is an assumption until it is tested. The rule is also noisy, since every command `www-data` runs is logged.
 - **Next step:** A controlled web-path test in a later phase, and a tuning pass on the `web_user_exec` rule once I know what normal `www-data` activity looks like on these hosts.
+- **Rule overlap:** `php_exec` and `web_user_exec` both cover the `execve` of the PHP process run as `www-data`, but auditd records only one key per event (the first matching rule). The shell and its child process are the events that matter for detection, and those are recorded under `web_user_exec`. Rule order in the file therefore decides which key a PHP process gets. This is documented here and not treated as a bug.
 
 ---
 
