@@ -1,0 +1,23 @@
+title: PHP or Apache configuration file changed
+id: <I made one by using uuidgen comand>
+status: experimental
+description: >
+  Attribute or content change on a PHP or Apache configuration file,
+  recorded by the -p wa watches in the auditd rules.
+author: Snikeer
+date: 2026/10/28
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    key:
+      - php_config_change
+      - php_fpm_pool_change
+      - apache_mod_change
+  condition: selection
+falsepositives:
+  - Planned package upgrades or configuration changes by administrators
+level: medium
+tags:
+  - attack.defense_evasion
