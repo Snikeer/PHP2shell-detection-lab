@@ -299,3 +299,119 @@ In the output, `key=php_exec` shows which rule matched, and `exe=/usr/bin/php8.3
 - **Gap:** Requests served through Apache `mod_php` on `lamp` do not trigger the `php_exec` rule, because the process running the code is Apache, not `/usr/bin/php8.3`. The unpatched node is therefore only partly covered.
 - **Next step:** Phase 3 builds detection on the CLI events. The web-request gap is documented here, and a separate test for it is planned in a later phase.
 Claude arbeider direkte med kodebasen din
+
+
+__________________________
+
+
+
+
+### Phase 3: Detection Logic
+
+#### Goal
+Turn the raw audit events from Phase 2 into detections I can explain and test. The rules are written in Sigma, the open format for detection rules. A small Python script applies them to copies of the audit logs on my analysis host. No detection runs on the lab nodes.
+
+#### 1. Changes to the audit rules
+Phase 2 only showed that PHP was started. It did not show what PHP started, and that is the part that matters if a request leads to a shell. I added a rule that records every `execve` made by the web server user (uid 33, `www-data`).
+
+My first idea was to filter the `execve` rule on `exe=/usr/bin/php8.3`. I changed it before testing. As far as I understand the audit timing, an exe filter on exec is checked after the process has been replaced by the new program, so it would match the child and not PHP. I have not tested that claim, so I filtered on the user instead. The cost is noise, since everything `www-data` runs is logged.
+
+Updated rules for `php-lab-node`:
+
+```
+-w /usr/bin/php8.3 -p x -k php_exec
+-w /usr/sbin/php-fpm8.3 -p x -k php_fpm_exec
+-a always,exit -F arch=b64 -S execve -F uid=33 -k web_user_exec
+-w /etc/php/8.3/cli/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/fpm/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/fpm/pool.d/ -p wa -k php_fpm_pool_change
+```
+
+Updated rules for `lamp`:
+
+```
+-w /usr/bin/php8.3 -p x -k php_exec
+-a always,exit -F arch=b64 -S execve -F uid=33 -k web_user_exec
+-w /etc/php/8.3/cli/php.ini -p wa -k php_config_change
+-w /etc/php/8.3/apache2/php.ini -p wa -k php_config_change
+-w /etc/apache2/mods-enabled/ -p wa -k apache_mod_change
+```
+
+Again loaded and verified with:
+```bash
+sudo augenrules --load
+sudo auditctl -l
+```
+
+<img src="images/18_auditctl_phase3_php_lab_node.png" alt="auditctl rules on php-lab-node after Phase 3 update" width="600">
+
+<img src="images/19_auditctl_phase3_lamp.png" alt="auditctl rules on lamp after Phase 3 update" width="600">
+
+
+
+#### 2. Test events
+I ran three harmless commands on each node and recorded the time with `date` first. The first is a plain PHP CLI call as `ubuntu`, which repeats the Phase 2 baseline. The second runs PHP as `www-data` and asks it to start a shell and `id`:
+
+```bash
+sudo -u www-data php -r 'system("id");'
+```
+
+
+The output shows `uid=33(www-data)`. This is a standard command and nothing is sent to the node from outside. The point of the test is that `auid` still says `ubuntu` in the audit log, even though the process runs as `www-data`. That field is what identifies the person behind the command in a real investigation.
+
+The third command changes the attributes of `php.ini` without changing its content, so the configuration watch should fire:
+
+```bash
+stat -c '%a %n' /etc/php/8.3/cli/php.ini
+sudo chmod 644 /etc/php/8.3/cli/php.ini
+```
+
+<img src="images/20_phase3_tests_php_lab_node.png" alt="Phase 3 test commands on php-lab-node" width="700">
+
+<img src="images/21_phase3_tests_lamp.png" alt="Phase 3 test commands on lamp" width="700">
+
+No web requests were sent to `lamp` in this phase. The `web_user_exec` rule is meant to cover the mod_php path that `php_exec` misses, but the test above runs PHP from the shell as `www-data`, not through Apache. Testing through a real web request is left for a later phase.
+
+
+
+#### 3. Collecting the logs
+The audit log is readable only by root, so each node copies it to `/tmp` first. I then pulled the copies to the analysis host with `scp` into `logs/`, which is excluded from the repository.
+
+<img src="images/22_phase3_logs_on_kali.png" alt="Audit log copies on the analysis host" width="600">
+
+#### 4. Detection rules
+The detections are three Sigma rules in `detection/sigma/`. `php_cli_exec` matches the `php_exec` watch on the PHP binary and is informational, because it fires on any manual PHP run. `web_user_exec` matches any command started by `www-data` and is rated high, since a shell started by the web user is the pattern I most want to catch. `php_config_change` covers writes and attribute changes to PHP and Apache configuration and is rated medium.
+
+The Sigma files are the source of truth. The analysis script applies the `selection` block of each rule to the audit records. It does not use a full Sigma backend, so I did not convert the rules to another SIEM format. The results below come from my script, not from `sigma-cli`.
+
+#### 5. Analysis script
+`analysis/parse_audit.py` reads a log copy, groups the raw records by event ID, and applies each rule to the `SYSCALL` record where the audit key lives. The `--since` flag limits the output to the test window, so the Phase 2 events do not mix in. For `execve` events it also prints the arguments from the `EXECVE` record, which shows the command that was started.
+
+```bash
+python3 analysis/parse_audit.py logs/php-lab-node/audit-phase3.log --node php-lab-node --since "<test start, UTC>"
+python3 analysis/parse_audit.py logs/lamp/audit-phase3.log --node lamp --since "<test start, UTC>"
+```
+
+<img src="images/23_analyzer_php_lab_node.png" alt="Analysis output for php-lab-node" width="700">
+
+<img src="images/24_analyzer_lamp.png" alt="Analysis output for lamp" width="700">
+
+#### 6. Result
+- **php-lab-node:** `php_cli_exec` `[n]` matches, `web_user_exec` `[n]` matches, `php_config_change` `[n]` matches.
+- **lamp:** `php_cli_exec` `[n]` matches, `web_user_exec` `[n]` matches, `php_config_change` `[n]` matches.
+- **Observation:** `[one or two sentences on what the output shows, including whether the shell started by www-data appeared with auid=ubuntu]`
+
+#### 7. Assessment
+- **Detection status:** Partially effective, with one new control aimed at the Phase 2 gap.
+- **Reasoning:** The CLI path is detected on both nodes, and configuration changes are detected. The `web_user_exec` rule is the first thing in this project that could catch a shell started from a web request, and the test shows that it fires for a shell started by `www-data`.
+- **Gap:** I have not verified that a real request through Apache on `lamp` produces a `web_user_exec` event. The rule should catch it, because Apache runs as `www-data`, but that is an assumption until it is tested. The rule is also noisy, since every command `www-data` runs is logged.
+- **Next step:** A controlled web-path test in a later phase, and a tuning pass on the `web_user_exec` rule once I know what normal `www-data` activity looks like on these hosts.
+
+---
+
+#### Phase 3 files
+- `detection/sigma/php_cli_exec.yml`
+- `detection/sigma/web_user_exec.yml`
+- `detection/sigma/php_config_change.yml`
+- `analysis/parse_audit.py`
+- `config/audit/php-lab-node.rules` and `config/audit/lamp.rules`
