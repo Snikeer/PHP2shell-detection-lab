@@ -1,0 +1,23 @@
+title: PHP CLI binary executed
+id: <I made one by using uuidgen comand>
+status: experimental
+description: >
+  Records execution of the PHP 8.3 CLI binary through the auditd watch
+  with key php_exec. Used as a baseline signal, not as an alert on its own.
+author: Snikeer
+date: 2026/10/28
+references:
+  - https://ubuntu.com/security/CVE-2026-109618
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    key: php_exec
+    exe: /usr/bin/php8.3
+  condition: selection
+falsepositives:
+  - Administrators running PHP scripts by hand
+level: informational
+tags:
+  - attack.execution
